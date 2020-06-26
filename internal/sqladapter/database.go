@@ -43,7 +43,7 @@ type AdapterSession interface {
 	NewCollection() AdapterCollection
 
 	// Open opens a new connection
-	Open(sess Session, dsn string) (*sql.DB, error)
+	OpenDSN(sess Session, dsn string) (*sql.DB, error)
 
 	// Collections returns a list of non-system tables from the database.
 	Collections(sess Session) ([]string, error)
@@ -59,11 +59,11 @@ type AdapterSession interface {
 
 	// CompileStatement transforms an internal statement into a format
 	// database/sql can understand.
-	CompileStatement(sess Session, stmt *exql.Statement, args []interface{}) (string, []interface{})
+	CompileStatement(sess Session, stmt *exql.Statement, args []interface{}) (string, []interface{}, error)
 
 	// Err wraps specific database errors (given in string form) and transforms
 	// them into error values.
-	Err(sess Session, in error) (out error)
+	Err(errIn error) (errOut error)
 }
 
 // Session provides logic for methods that can be shared across all SQL
@@ -281,7 +281,7 @@ func (sess *session) Open() error {
 	var err error
 
 	connFn := func() error {
-		sqlDB, err = sess.adapter.Open(sess, sess.connURL.String())
+		sqlDB, err = sess.adapter.OpenDSN(sess, sess.connURL.String())
 		if err != nil {
 			return err
 		}
@@ -542,9 +542,12 @@ func (d *session) StatementPrepare(ctx context.Context, stmt *exql.Statement) (s
 		}(time.Now())
 	}
 
-	tx := d.Transaction()
+	query, _, err = d.compileStatement(stmt, nil)
+	if err != nil {
+		return nil, err
+	}
 
-	query, _ = d.compileStatement(stmt, nil)
+	tx := d.Transaction()
 	if tx != nil {
 		sqlStmt, err = compat.PrepareContext(tx.(*baseTx), ctx, query)
 		return
@@ -595,7 +598,10 @@ func (d *session) StatementExec(ctx context.Context, stmt *exql.Statement, args 
 	}
 
 	if execer, ok := d.adapter.(statementExecer); ok {
-		query, args = d.compileStatement(stmt, args)
+		query, args, err = d.compileStatement(stmt, args)
+		if err != nil {
+			return nil, err
+		}
 		res, err = execer.StatementExec(d, ctx, query, args...)
 		return
 	}
@@ -613,7 +619,11 @@ func (d *session) StatementExec(ctx context.Context, stmt *exql.Statement, args 
 		return
 	}
 
-	query, args = d.compileStatement(stmt, args)
+	query, args, err = d.compileStatement(stmt, args)
+	if err != nil {
+		return nil, err
+	}
+
 	if tx != nil {
 		res, err = compat.ExecContext(tx.(*baseTx), ctx, query, args)
 		return
@@ -655,7 +665,10 @@ func (d *session) StatementQuery(ctx context.Context, stmt *exql.Statement, args
 		return
 	}
 
-	query, args = d.compileStatement(stmt, args)
+	query, args, err = d.compileStatement(stmt, args)
+	if err != nil {
+		return nil, err
+	}
 	if tx != nil {
 		rows, err = compat.QueryContext(tx.(*baseTx), ctx, query, args)
 		return
@@ -699,7 +712,10 @@ func (d *session) StatementQueryRow(ctx context.Context, stmt *exql.Statement, a
 		return
 	}
 
-	query, args = d.compileStatement(stmt, args)
+	query, args, err = d.compileStatement(stmt, args)
+	if err != nil {
+		return nil, err
+	}
 	if tx != nil {
 		row = compat.QueryRowContext(tx.(*baseTx), ctx, query, args)
 		return
@@ -719,7 +735,7 @@ func (sess *session) Driver() interface{} {
 }
 
 // compileStatement compiles the given statement into a string.
-func (sess *session) compileStatement(stmt *exql.Statement, args []interface{}) (string, []interface{}) {
+func (sess *session) compileStatement(stmt *exql.Statement, args []interface{}) (string, []interface{}, error) {
 	if converter, ok := sess.adapter.(hasConvertValues); ok {
 		args = converter.ConvertValues(args)
 	}
@@ -742,12 +758,18 @@ func (sess *session) prepareStatement(ctx context.Context, stmt *exql.Statement,
 		// The statement was cachesess.
 		ps, err := pc.(*Stmt).Open()
 		if err == nil {
-			_, args = sess.compileStatement(stmt, args)
+			_, args, err = sess.compileStatement(stmt, args)
+			if err != nil {
+				return nil, "", nil, err
+			}
 			return ps, ps.query, args, nil
 		}
 	}
 
-	query, args := sess.compileStatement(stmt, args)
+	query, args, err := sess.compileStatement(stmt, args)
+	if err != nil {
+		return nil, "", nil, err
+	}
 	sqlStmt, err := func(query *string) (*sql.Stmt, error) {
 		if tx != nil {
 			return compat.PrepareContext(tx.(*baseTx), ctx, *query)
@@ -789,7 +811,7 @@ func (d *session) WaitForConnection(connectFn func() error) error {
 		}
 
 		// Only attempt to reconnect if the error is too many clients.
-		if d.adapter.Err(d, err) == db.ErrTooManyClients {
+		if d.adapter.Err(err) == db.ErrTooManyClients {
 			// Sleep and try again if, and only if, the server replied with a "too
 			// many clients" error.
 			time.Sleep(waitTime)
