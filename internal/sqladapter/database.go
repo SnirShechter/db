@@ -32,8 +32,18 @@ type statementExecer interface {
 	StatementExec(sess Session, ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
+type statementCompiler interface {
+	// CompileStatement transforms an internal statement into a format
+	// database/sql can understand.
+	CompileStatement(sess Session, stmt *exql.Statement, args []interface{}) (string, []interface{}, error)
+}
+
 type hasConvertValues interface {
 	ConvertValues(values []interface{}) []interface{}
+}
+
+type errorConverter interface {
+	Err(errIn error) (errOut error)
 }
 
 // AdapterSession defines methods to be implemented by SQL database adapters.
@@ -56,14 +66,6 @@ type AdapterSession interface {
 
 	// PrimaryKeys returns all primary keys on the table.
 	PrimaryKeys(sess Session, name string) ([]string, error)
-
-	// CompileStatement transforms an internal statement into a format
-	// database/sql can understand.
-	CompileStatement(sess Session, stmt *exql.Statement, args []interface{}) (string, []interface{}, error)
-
-	// Err wraps specific database errors (given in string form) and transforms
-	// them into error values.
-	Err(errIn error) (errOut error)
 }
 
 // Session provides logic for methods that can be shared across all SQL
@@ -221,6 +223,13 @@ func (sess *session) Tx(fn func(tx sqlbuilder.Tx) error) error {
 
 func (sess *session) TxContext(ctx context.Context, fn func(sess sqlbuilder.Tx) error) error {
 	return TxContext(sess, ctx, fn)
+}
+
+func (sess *session) Err(errIn error) (errOur error) {
+	if convertError, ok := errIn.(errorConverter); ok {
+		return convertError.Err(errIn)
+	}
+	return errIn
 }
 
 func (sess *session) PrimaryKeys(tableName string) ([]string, error) {
@@ -739,7 +748,16 @@ func (sess *session) compileStatement(stmt *exql.Statement, args []interface{}) 
 	if converter, ok := sess.adapter.(hasConvertValues); ok {
 		args = converter.ConvertValues(args)
 	}
-	return sess.adapter.CompileStatement(sess, stmt, args)
+	if statementCompiler, ok := sess.adapter.(statementCompiler); ok {
+		return statementCompiler.CompileStatement(sess, stmt, args)
+	}
+
+	compiled, err := stmt.Compile(sess.adapter.Template())
+	if err != nil {
+		return "", nil, err
+	}
+	query, args := sqlbuilder.Preprocess(compiled, args)
+	return query, args, nil
 }
 
 // prepareStatement compiles a query and tries to use previously generated
@@ -811,7 +829,7 @@ func (d *session) WaitForConnection(connectFn func() error) error {
 		}
 
 		// Only attempt to reconnect if the error is too many clients.
-		if d.adapter.Err(err) == db.ErrTooManyClients {
+		if d.Err(err) == db.ErrTooManyClients {
 			// Sleep and try again if, and only if, the server replied with a "too
 			// many clients" error.
 			time.Sleep(waitTime)
