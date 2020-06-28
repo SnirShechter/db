@@ -50,7 +50,7 @@ type errorConverter interface {
 type AdapterSession interface {
 	Template() *exql.Template
 
-	NewCollection() AdapterCollection
+	NewCollection() CollectionAdapter
 
 	// Open opens a new connection
 	OpenDSN(sess Session, dsn string) (*sql.DB, error)

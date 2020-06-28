@@ -105,7 +105,7 @@ func (*database) Err(err error) error {
 	return err
 }
 
-func (*database) NewCollection() sqladapter.AdapterCollection {
+func (*database) NewCollection() sqladapter.CollectionAdapter {
 	return &collectionAdapter{}
 }
 

@@ -193,7 +193,7 @@ func (s *SQLTestSuite) TestTruncateAllCollections() {
 	s.True(len(collections) > 0)
 
 	for _, col := range collections {
-		if col.Exists() {
+		if ok, _ := col.Exists(); ok {
 			if err = col.Truncate(); err != nil {
 				s.NoError(err)
 			}

@@ -105,7 +105,7 @@ func (*database) StatementExec(sess sqladapter.Session, ctx context.Context, que
 	return res, err
 }
 
-func (*database) NewCollection() sqladapter.AdapterCollection {
+func (*database) NewCollection() sqladapter.CollectionAdapter {
 	return &collectionAdapter{}
 }
 
