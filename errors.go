@@ -54,5 +54,5 @@ var (
 	ErrUnsupportedValue         = errors.New(`upper: value does not support unmarshaling`)
 	ErrNilItem                  = errors.New(`upper: invalid item`)
 	ErrZeroItemID               = errors.New(`upper: item ID is not defined`)
-	ErrMissingPrimaryKeys       = errors.New(`upper: table %q has no primary keys`)
+	ErrMissingPrimaryKeys       = errors.New(`upper: collection %q has no primary keys`)
 )

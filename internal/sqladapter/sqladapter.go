@@ -74,6 +74,7 @@ func (w *sqlAdapterWrapper) New(sqlDB *sql.DB) (sqlbuilder.Session, error) {
 	return sess, nil
 }
 
+// RegisterAdapter registers a new SQL adapter.
 func RegisterAdapter(name string, adapter AdapterSession) sqlbuilder.Adapter {
 	z := &sqlAdapterWrapper{adapter}
 	db.RegisterAdapter(name, sqlbuilder.NewCompatAdapter(z))

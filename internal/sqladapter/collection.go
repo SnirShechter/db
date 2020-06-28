@@ -9,7 +9,7 @@ import (
 	"github.com/upper/db/sqlbuilder"
 )
 
-// CollectionAdapter defines methods to be implemented by adapters.
+// CollectionAdapter defines methods to be implemented by SQL adapters.
 type CollectionAdapter interface {
 	// Insert prepares and executes an INSERT statament. When the item is
 	// succefully added, Insert returns a unique identifier of the newly added
