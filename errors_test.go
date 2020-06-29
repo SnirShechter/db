@@ -44,7 +44,6 @@ func TestWrap(t *testing.T) {
 
 	assert.True(t, errors.Is(wrappedFakeErr, wrappedFakeErr))
 	assert.True(t, errors.Is(wrappedFakeErr, adapterFakeErr))
-	assert.True(t, errors.Is(wrappedFakeErr, wrappedFakeErr))
 	assert.True(t, errors.Is(wrappedFakeErr, ErrCollectionDoesNotExist))
 	assert.True(t, errors.Is(wrappedFakeErr, ErrNoSuchObject))
 	assert.True(t, errors.Is(wrappedFakeErr, ErrUser))
@@ -55,8 +54,8 @@ func TestWrap(t *testing.T) {
 	})
 
 	assert.True(t, errors.Is(errPrimaryKeys, errPrimaryKeys))
+	assert.True(t, errors.Is(errPrimaryKeys, wrappedFakeErr))
 	assert.True(t, errors.Is(errPrimaryKeys, adapterFakeErr))
-	assert.True(t, errors.Is(errPrimaryKeys, errPrimaryKeys))
 	assert.True(t, errors.Is(errPrimaryKeys, ErrCollectionDoesNotExist))
 	assert.True(t, errors.Is(errPrimaryKeys, ErrNoSuchObject))
 	assert.True(t, errors.Is(errPrimaryKeys, ErrUser))
