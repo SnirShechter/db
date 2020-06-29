@@ -15,18 +15,6 @@ import (
 	db "github.com/upper/db"
 )
 
-type customLogger struct {
-}
-
-func (*customLogger) Log(q *db.QueryStatus) {
-	switch q.Err {
-	case nil, db.ErrNoMoreRows:
-		return // Don't log successful queries.
-	}
-	// Alert of any other error.
-	log.Printf("Expected database error: %v\n%s", q.Err, q.String())
-}
-
 type artistType struct {
 	ID   int64  `db:"id,omitempty"`
 	Name string `db:"name"`

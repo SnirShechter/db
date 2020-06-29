@@ -518,7 +518,7 @@ func (sess *session) Collection(name string) db.Collection {
 	return col
 }
 
-func queryLog(status *db.QueryStatus) {
+func queryLog(status *QueryStatus) {
 	diff := status.End.Sub(status.Start)
 
 	slowQuery := false
@@ -539,7 +539,7 @@ func (sess *session) StatementPrepare(ctx context.Context, stmt *exql.Statement)
 	var query string
 
 	defer func(start time.Time) {
-		queryLog(&db.QueryStatus{
+		queryLog(&QueryStatus{
 			TxID:    sess.txID,
 			SessID:  sess.sessID,
 			Query:   query,
@@ -576,7 +576,7 @@ func (sess *session) StatementExec(ctx context.Context, stmt *exql.Statement, ar
 	var query string
 
 	defer func(start time.Time) {
-		status := db.QueryStatus{
+		status := QueryStatus{
 			TxID:    sess.txID,
 			SessID:  sess.sessID,
 			Query:   query,
@@ -641,7 +641,7 @@ func (sess *session) StatementQuery(ctx context.Context, stmt *exql.Statement, a
 	var query string
 
 	defer func(start time.Time) {
-		status := db.QueryStatus{
+		status := QueryStatus{
 			TxID:    sess.txID,
 			SessID:  sess.sessID,
 			Query:   query,
@@ -687,7 +687,7 @@ func (sess *session) StatementQueryRow(ctx context.Context, stmt *exql.Statement
 	var query string
 
 	defer func(start time.Time) {
-		status := db.QueryStatus{
+		status := QueryStatus{
 			TxID:    sess.txID,
 			SessID:  sess.sessID,
 			Query:   query,
