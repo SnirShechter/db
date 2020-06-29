@@ -518,22 +518,37 @@ func (sess *session) Collection(name string) db.Collection {
 	return col
 }
 
+func queryLog(status *db.QueryStatus) {
+	diff := status.End.Sub(status.Start)
+
+	slowQuery := false
+	if diff >= time.Millisecond*100 {
+		status.Err = db.ErrWarnSlowQuery
+		slowQuery = true
+	}
+
+	if status.Err != nil || slowQuery {
+		db.Log().Warn(status)
+		return
+	}
+
+	db.Log().Debug(status)
+}
+
 func (sess *session) StatementPrepare(ctx context.Context, stmt *exql.Statement) (sqlStmt *sql.Stmt, err error) {
 	var query string
 
-	if sess.Settings.LoggingEnabled() {
-		defer func(start time.Time) {
-			sess.Logger().Log(&db.QueryStatus{
-				TxID:    sess.txID,
-				SessID:  sess.sessID,
-				Query:   query,
-				Err:     err,
-				Start:   start,
-				End:     time.Now(),
-				Context: ctx,
-			})
-		}(time.Now())
-	}
+	defer func(start time.Time) {
+		queryLog(&db.QueryStatus{
+			TxID:    sess.txID,
+			SessID:  sess.sessID,
+			Query:   query,
+			Err:     err,
+			Start:   start,
+			End:     time.Now(),
+			Context: ctx,
+		})
+	}(time.Now())
 
 	query, _, err = sess.compileStatement(stmt, nil)
 	if err != nil {
@@ -560,32 +575,30 @@ func (sess *session) ConvertValues(values []interface{}) []interface{} {
 func (sess *session) StatementExec(ctx context.Context, stmt *exql.Statement, args ...interface{}) (res sql.Result, err error) {
 	var query string
 
-	if sess.Settings.LoggingEnabled() {
-		defer func(start time.Time) {
-			status := db.QueryStatus{
-				TxID:    sess.txID,
-				SessID:  sess.sessID,
-				Query:   query,
-				Args:    args,
-				Err:     err,
-				Start:   start,
-				End:     time.Now(),
-				Context: ctx,
+	defer func(start time.Time) {
+		status := db.QueryStatus{
+			TxID:    sess.txID,
+			SessID:  sess.sessID,
+			Query:   query,
+			Args:    args,
+			Err:     err,
+			Start:   start,
+			End:     time.Now(),
+			Context: ctx,
+		}
+
+		if res != nil {
+			if rowsAffected, err := res.RowsAffected(); err == nil {
+				status.RowsAffected = &rowsAffected
 			}
 
-			if res != nil {
-				if rowsAffected, err := res.RowsAffected(); err == nil {
-					status.RowsAffected = &rowsAffected
-				}
-
-				if lastInsertID, err := res.LastInsertId(); err == nil {
-					status.LastInsertID = &lastInsertID
-				}
+			if lastInsertID, err := res.LastInsertId(); err == nil {
+				status.LastInsertID = &lastInsertID
 			}
+		}
 
-			sess.Logger().Log(&status)
-		}(time.Now())
-	}
+		queryLog(&status)
+	}(time.Now())
 
 	if execer, ok := sess.adapter.(statementExecer); ok {
 		query, args, err = sess.compileStatement(stmt, args)
@@ -627,20 +640,19 @@ func (sess *session) StatementExec(ctx context.Context, stmt *exql.Statement, ar
 func (sess *session) StatementQuery(ctx context.Context, stmt *exql.Statement, args ...interface{}) (rows *sql.Rows, err error) {
 	var query string
 
-	if sess.Settings.LoggingEnabled() {
-		defer func(start time.Time) {
-			sess.Logger().Log(&db.QueryStatus{
-				TxID:    sess.txID,
-				SessID:  sess.sessID,
-				Query:   query,
-				Args:    args,
-				Err:     err,
-				Start:   start,
-				End:     time.Now(),
-				Context: ctx,
-			})
-		}(time.Now())
-	}
+	defer func(start time.Time) {
+		status := db.QueryStatus{
+			TxID:    sess.txID,
+			SessID:  sess.sessID,
+			Query:   query,
+			Args:    args,
+			Err:     err,
+			Start:   start,
+			End:     time.Now(),
+			Context: ctx,
+		}
+		queryLog(&status)
+	}(time.Now())
 
 	tx := sess.Transaction()
 
@@ -674,20 +686,19 @@ func (sess *session) StatementQuery(ctx context.Context, stmt *exql.Statement, a
 func (sess *session) StatementQueryRow(ctx context.Context, stmt *exql.Statement, args ...interface{}) (row *sql.Row, err error) {
 	var query string
 
-	if sess.Settings.LoggingEnabled() {
-		defer func(start time.Time) {
-			sess.Logger().Log(&db.QueryStatus{
-				TxID:    sess.txID,
-				SessID:  sess.sessID,
-				Query:   query,
-				Args:    args,
-				Err:     err,
-				Start:   start,
-				End:     time.Now(),
-				Context: ctx,
-			})
-		}(time.Now())
-	}
+	defer func(start time.Time) {
+		status := db.QueryStatus{
+			TxID:    sess.txID,
+			SessID:  sess.sessID,
+			Query:   query,
+			Args:    args,
+			Err:     err,
+			Start:   start,
+			End:     time.Now(),
+			Context: ctx,
+		}
+		queryLog(&status)
+	}(time.Now())
 
 	tx := sess.Transaction()
 
@@ -856,8 +867,6 @@ func ReplaceWithDollarSign(in string) string {
 }
 
 func copySettings(from Session, into Session) {
-	into.SetLogging(from.LoggingEnabled())
-	into.SetLogger(from.Logger())
 	into.SetPreparedStatementCache(from.PreparedStatementCacheEnabled())
 	into.SetConnMaxLifetime(from.ConnMaxLifetime())
 	into.SetMaxIdleConns(from.MaxIdleConns())

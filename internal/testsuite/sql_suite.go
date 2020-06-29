@@ -201,14 +201,15 @@ func (s *SQLTestSuite) TestTruncateAllCollections() {
 	}
 }
 
-func (s *SQLTestSuite) TestCustomQueryLogger() {
+func (s *SQLTestSuite) TestQueryLogger() {
 	sess := s.SQLBuilder()
 
-	sess.SetLogger(&customLogger{})
-	sess.SetLogging(true)
+	db.Log().SetLogger(&log.Logger{})
+	db.Log().SetLevel(db.LogLevelDebug)
+
 	defer func() {
-		sess.SetLogger(nil)
-		sess.SetLogging(false)
+		db.Log().SetLogger(nil)
+		db.Log().SetLevel(db.LogLevelWarn)
 	}()
 
 	_, err := sess.Collection("artist").Find().Count()
@@ -1783,9 +1784,9 @@ func (s *SQLTestSuite) TestExhaustConnectionPool() {
 
 	sess := s.SQLBuilder()
 
-	sess.SetLogging(true)
+	db.Log().SetLevel(db.LogLevelDebug)
 	defer func() {
-		sess.SetLogging(false)
+		db.Log().SetLevel(db.LogLevelWarn)
 	}()
 
 	var wg sync.WaitGroup
@@ -1804,14 +1805,6 @@ func (s *SQLTestSuite) TestExhaustConnectionPool() {
 				tFatal(err)
 			}
 			tLogf("Tx %d: OK (time to connect: %v)", i, time.Since(start))
-
-			if !sess.LoggingEnabled() {
-				tLogf("Expecting logging to be enabled")
-			}
-
-			if !tx.LoggingEnabled() {
-				tLogf("Expecting logging to be enabled (enabled by parent session)")
-			}
 
 			// Let's suppose that we do a bunch of complex stuff and that the
 			// transaction lasts 3 seconds.

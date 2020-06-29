@@ -147,4 +147,6 @@ var (
 	ErrNilItem                  = ErrWrongParameter.Wrap(newError(`invalid item`))
 	ErrZeroItemID               = ErrWrongParameter.Wrap(newError(`item ID is not defined`))
 	ErrMissingPrimaryKeys       = ErrWrongParameter.Wrap(newError(`collection has no primary keys`))
+
+	ErrWarnSlowQuery = ErrUser.Wrap(newError(`slow query`))
 )

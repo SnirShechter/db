@@ -25,10 +25,34 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 )
+
+type LogLevel int8
+
+const (
+	LogLevelTrace LogLevel = -1
+
+	LogLevelDebug LogLevel = iota
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+	LogLevelFatal
+	LogLevelPanic
+)
+
+var logLevels = map[LogLevel]string{
+	LogLevelTrace: "TRACE",
+	LogLevelDebug: "DEBUG",
+	LogLevelInfo:  "INFO",
+	LogLevelWarn:  "WARN",
+	LogLevelError: "ERROR",
+	LogLevelFatal: "FATAL",
+	LogLevelPanic: "PANIC",
+}
 
 const (
 	fmtLogSessID       = `Session ID:     %05d`
@@ -104,37 +128,112 @@ func (q *QueryStatus) String() string {
 		lines = append(lines, fmt.Sprintf(fmtLogContext, q.Context))
 	}
 
-	return strings.Join(lines, "\n")
+	return "\t" + strings.Replace(strings.Join(lines, "\n"), "\n", "\n\t", -1) + "\n\n"
 }
 
-// envDebugEnabled can be used by adapters to determine if the user has enabled
-// debugging.
-//
-// If the user sets the `UPPER_DB_DEBUG` environment variable to a non-empty
-// value, all generated statements will be printed at runtime to the standard
-// logger.
-//
-// Example:
-//
-//	UPPER_DB_DEBUG=1 go test
-//
-//	UPPER_DB_DEBUG=1 ./go-program
 const (
-	envDebugEnabled = `UPPER_DB_DEBUG`
+	defaultLogLevel = LogLevelWarn
 )
 
-// Logger represents a logging collector. You can pass a logging collector to
-// db.DefaultSettings.SetLogger(myCollector) to make it collect db.QueryStatus
-// messages after executing a query.
+var defaultLogger Logger = log.New(os.Stdout, "upper/db: ", log.LstdFlags|log.Lmsgprefix)
+
 type Logger interface {
-	Log(*QueryStatus)
+	Fatalf(format string, v ...interface{})
+	Printf(format string, v ...interface{})
+	Panicf(format string, v ...interface{})
 }
 
-type simpleLogger struct {
+// LoggingCollector represents a logging collector. You can pass a logging
+// collector to db.DefaultSettings.SetLogger(myCollector) to make it collect
+// db.QueryStatus messages after executing a query.
+type LoggingCollector interface {
+	SetLogger(Logger)
+	Logger() Logger
+
+	SetLevel(LogLevel)
+	Level() LogLevel
+
+	Trace(interface{}, ...interface{})
+	Debug(interface{}, ...interface{})
+	Info(interface{}, ...interface{})
+	Warn(interface{}, ...interface{})
+	Error(interface{}, ...interface{})
+	Fatal(interface{}, ...interface{})
+	Panic(interface{}, ...interface{})
 }
 
-func (lg *simpleLogger) Log(m *QueryStatus) {
-	log.Printf("\n\t%s\n\n", strings.Replace(m.String(), "\n", "\n\t", -1))
+type loggingCollector struct {
+	level  LogLevel
+	logger Logger
 }
 
-var defaultLogger = Logger(&simpleLogger{})
+func (c *loggingCollector) SetLevel(level LogLevel) {
+	c.level = level
+}
+
+func (c *loggingCollector) Level() LogLevel {
+	return c.level
+}
+
+func (c *loggingCollector) Logger() Logger {
+	if c.logger == nil {
+		return defaultLogger
+	}
+	return c.logger
+}
+
+func (c *loggingCollector) SetLogger(logger Logger) {
+	c.logger = logger
+}
+
+func (c *loggingCollector) log(level LogLevel, f interface{}, v ...interface{}) {
+	if level < c.level {
+		return
+	}
+	format := logLevels[c.level] + "\n" + fmt.Sprintf("%v", f)
+
+	if c.level >= LogLevelPanic {
+		c.Logger().Panicf(format, v...)
+	}
+	if c.level >= LogLevelFatal {
+		c.Logger().Fatalf(format, v...)
+	}
+	c.Logger().Printf(format, v...)
+}
+
+func (c *loggingCollector) Debug(format interface{}, v ...interface{}) {
+	c.log(LogLevelDebug, format, v...)
+}
+
+func (c *loggingCollector) Trace(format interface{}, v ...interface{}) {
+	c.log(LogLevelTrace, format, v...)
+}
+
+func (c *loggingCollector) Info(format interface{}, v ...interface{}) {
+	c.log(LogLevelInfo, format, v...)
+}
+
+func (c *loggingCollector) Warn(format interface{}, v ...interface{}) {
+	c.log(LogLevelWarn, format, v...)
+}
+
+func (c *loggingCollector) Error(format interface{}, v ...interface{}) {
+	c.log(LogLevelError, format, v...)
+}
+
+func (c *loggingCollector) Fatal(format interface{}, v ...interface{}) {
+	c.log(LogLevelFatal, format, v...)
+}
+
+func (c *loggingCollector) Panic(format interface{}, v ...interface{}) {
+	c.log(LogLevelPanic, format, v...)
+}
+
+var defaultLoggingCollector = &loggingCollector{
+	level:  defaultLogLevel,
+	logger: defaultLogger,
+}
+
+func Log() LoggingCollector {
+	return defaultLoggingCollector
+}
